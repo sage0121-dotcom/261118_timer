@@ -1,0 +1,576 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>포모도로 타이머</title>
+<style>
+  :root {
+    --bg: #fdf8ee;
+    --card: #ffffff;
+    --text: #3a2c1c;
+    --muted: #9a8670;
+    --border: #f0e2c4;
+    --accent: #efa83c;
+    --accent-soft: #fbedd2;
+    --egg: #fdf1d0;
+    --egg-line: #f0d48a;
+    --tick: #e2a94a;
+    --tick-minor: #ecc98a;
+    --belt: #efa83c;
+    --belt-bg: #f6dcaa;
+    --digits: #b8741f;
+    --cheek: #ffbfae;
+  }
+  body.short {
+    --bg: #f2faf6; --border: #cfeadd; --accent: #3fa57a; --accent-soft: #dcf2e7;
+    --egg: #e5f6ed; --egg-line: #a9dcc3; --tick: #5bb08a; --tick-minor: #9bd0b6;
+    --belt: #3fa57a; --belt-bg: #bfe6d3; --digits: #2c7a58;
+  }
+  body.long {
+    --bg: #f3f6fd; --border: #d3def4; --accent: #4a6fd0; --accent-soft: #dfe7fa;
+    --egg: #e6edfb; --egg-line: #b0c4ee; --tick: #6687d6; --tick-minor: #a5b8e6;
+    --belt: #4a6fd0; --belt-bg: #c4d3f3; --digits: #3555a8;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px 16px;
+    transition: background .5s;
+  }
+  .app {
+    width: 100%; max-width: 420px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 28px;
+    padding: 24px 22px 22px;
+    box-shadow: 0 12px 34px rgba(120, 80, 20, .07);
+    text-align: center;
+    transition: border-color .5s;
+  }
+  h1 { font-size: 18px; margin: 0 0 16px; font-weight: 700; letter-spacing: -.01em; }
+
+  .tabs { display: flex; gap: 6px; background: var(--accent-soft); padding: 4px; border-radius: 999px; transition: background .5s; }
+  .tabs button {
+    flex: 1; border: 0; background: transparent; color: var(--text);
+    padding: 9px 4px; border-radius: 999px; font: inherit; font-size: 14px; cursor: pointer;
+    transition: background .3s, color .3s;
+  }
+  .tabs button.active { background: var(--accent); color: #fff; font-weight: 600; }
+
+  /* ───── 달걀 캐릭터 ───── */
+  .egg {
+    position: relative; display: block;
+    width: 270px; max-width: 100%; margin: 18px auto 6px;
+    border: 0; padding: 0; background: none; cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: transform .15s ease;
+  }
+  .egg:active { transform: scale(.95, .92); }
+  .egg:focus-visible { outline: 3px solid var(--accent-soft); outline-offset: 6px; border-radius: 40%; }
+  .egg-hop { transform-origin: 50% 100%; }
+  .egg-body { transform-origin: 50% 88%; }
+  .egg svg { display: block; width: 100%; height: auto; overflow: visible; }
+
+  .shadow {
+    width: 62%; height: 14px; margin: -6px auto 0;
+    background: rgba(140, 100, 50, .13); border-radius: 50%;
+  }
+
+  .egg-shape { fill: var(--egg); stroke: var(--egg-line); stroke-width: 7; transition: fill .5s, stroke .5s; }
+  .tick       { stroke: var(--tick); stroke-width: 7; stroke-linecap: round; transition: stroke .5s; }
+  .tick.minor { stroke: var(--tick-minor); stroke-width: 4.5; }
+  #ticks { transform-box: view-box; transform-origin: 200px 235px; transition: transform .35s linear; }
+  .egg:not(.is-running) #ticks { transition: transform .9s cubic-bezier(.3, 1.4, .5, 1); }
+  .pointer { fill: #e5553e; }
+  .belt-bg { fill: var(--belt-bg); transition: fill .5s; }
+  .belt    { fill: var(--belt); transition: fill .5s, width .3s linear; }
+  .digits  {
+    fill: var(--digits); font-size: 58px; font-weight: 800;
+    font-family: "Pretendard", "Malgun Gothic", system-ui, sans-serif;
+    font-variant-numeric: tabular-nums; letter-spacing: 1px; transition: fill .5s;
+  }
+  .cheek { fill: var(--cheek); }
+  .ink   { fill: #2b2320; }
+  .ink-line { fill: none; stroke: #2b2320; stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; }
+
+  .eye, .blink { transform-box: fill-box; transform-origin: center; }
+  .eye { transition: transform .25s ease; }
+  .blink { animation: blink 4.6s infinite; }
+  .blink.r { animation-delay: .04s; }
+  .pupil { transition: transform .12s ease-out; }
+
+  .happy, .mouth-open, .mouth-sleep, .zz, .sweat { display: none; }
+
+  /* 대기: 둥실둥실 */
+  .egg.is-idle .egg-body   { animation: bob 2.6s ease-in-out infinite; }
+  .egg.is-idle + .shadow   { animation: shadow-bob 2.6s ease-in-out infinite; }
+
+  /* 진행 중: 째깍째깍 흔들기 */
+  .egg.is-running .egg-body { animation: sway 2s ease-in-out infinite; }
+  .egg.is-running.is-hurry .egg-body { animation: sway .5s ease-in-out infinite; }
+  .egg.is-hurry .sweat { display: inline; animation: sweat 1.2s ease-in infinite; }
+
+  /* 일시정지: 졸린 얼굴 + Zz */
+  .egg.is-paused .egg-body { animation: breathe 3.4s ease-in-out infinite; }
+  .egg.is-paused .eye { transform: scaleY(.14); }
+  .egg.is-paused .mouth-smile { display: none; }
+  .egg.is-paused .mouth-sleep { display: inline; }
+  .egg.is-paused .zz { display: inline; }
+  .zz text { fill: var(--tick); font-weight: 800; font-family: system-ui, sans-serif; opacity: 0; }
+  .zz .z1 { font-size: 22px; animation: zz 2.4s ease-out infinite; }
+  .zz .z2 { font-size: 16px; animation: zz 2.4s ease-out .8s infinite; }
+  .zz .z3 { font-size: 12px; animation: zz 2.4s ease-out 1.6s infinite; }
+
+  /* 종료: 따르릉 + 활짝 웃기 */
+  .egg.is-ringing .egg-body { animation: ring .12s linear infinite; }
+  .egg.is-ringing .egg-hop  { animation: jump .6s ease-in-out 3; }
+  .egg.is-ringing .eye, .egg.is-ringing .mouth-smile, .egg.is-ringing .mouth-sleep, .egg.is-ringing .zz { display: none; }
+  .egg.is-ringing .happy, .egg.is-ringing .mouth-open { display: inline; }
+  .egg.is-ringing .cheek { animation: blush .3s ease-in-out infinite alternate; transform-box: fill-box; transform-origin: center; }
+
+  /* 모드 전환 시 깡총 */
+  .egg.hop .egg-hop { animation: jump .5s cubic-bezier(.3,.7,.4,1); }
+
+  @keyframes bob {
+    0%, 100% { transform: translateY(0) scale(1, 1); }
+    50%      { transform: translateY(-9px) scale(.99, 1.015); }
+  }
+  @keyframes shadow-bob {
+    0%, 100% { transform: scaleX(1); opacity: 1; }
+    50%      { transform: scaleX(.85); opacity: .7; }
+  }
+  @keyframes sway {
+    0%, 100% { transform: rotate(-2.5deg); }
+    50%      { transform: rotate(2.5deg); }
+  }
+  @keyframes breathe {
+    0%, 100% { transform: scale(1, 1); }
+    50%      { transform: scale(1.02, .98); }
+  }
+  @keyframes ring {
+    0%   { transform: rotate(-4deg) translateX(-2px); }
+    50%  { transform: rotate(4deg) translateX(2px); }
+    100% { transform: rotate(-4deg) translateX(-2px); }
+  }
+  @keyframes jump {
+    0%   { transform: translateY(0) scale(1, 1); }
+    20%  { transform: translateY(0) scale(1.08, .9); }
+    50%  { transform: translateY(-26px) scale(.95, 1.06); }
+    80%  { transform: translateY(0) scale(1.05, .94); }
+    100% { transform: translateY(0) scale(1, 1); }
+  }
+  @keyframes blink {
+    0%, 92%, 100% { transform: scaleY(1); }
+    95%           { transform: scaleY(.08); }
+  }
+  @keyframes zz {
+    0%   { opacity: 0; transform: translate(0, 0); }
+    25%  { opacity: 1; }
+    100% { opacity: 0; transform: translate(18px, -34px); }
+  }
+  @keyframes sweat {
+    0%   { opacity: 0; transform: translateY(-4px); }
+    30%  { opacity: 1; }
+    100% { opacity: 0; transform: translateY(16px); }
+  }
+  @keyframes blush {
+    from { transform: scale(1); }
+    to   { transform: scale(1.2); }
+  }
+
+  /* 축하 파티클 */
+  .burst {
+    position: absolute; left: 50%; top: 45%;
+    font-size: 20px; pointer-events: none;
+    animation: burst 1.1s cubic-bezier(.2, .7, .3, 1) forwards;
+  }
+  @keyframes burst {
+    0%   { transform: translate(-50%, -50%) scale(.3) rotate(0); opacity: 1; }
+    100% { transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(1.1) rotate(var(--rot)); opacity: 0; }
+  }
+
+  .status { font-size: 15px; color: var(--muted); margin: 6px 0 16px; min-height: 1.4em; }
+
+  .controls { display: flex; gap: 10px; justify-content: center; align-items: center; }
+  .btn {
+    border: 1px solid var(--border); background: var(--card); color: var(--text);
+    border-radius: 16px; padding: 12px 16px; font: inherit; font-size: 15px; cursor: pointer;
+    transition: background .2s, transform .1s;
+  }
+  .btn:hover { background: var(--accent-soft); }
+  .btn:active { transform: scale(.95); }
+  .btn.primary {
+    background: var(--accent); border-color: var(--accent); color: #fff;
+    min-width: 120px; font-weight: 700; font-size: 17px;
+  }
+  .btn.primary:hover { filter: brightness(1.05); background: var(--accent); }
+
+  .stats { margin-top: 20px; font-size: 14px; color: var(--muted); }
+  .dots { display: flex; gap: 8px; justify-content: center; margin-top: 8px; font-size: 18px; }
+  .dots span { filter: grayscale(1); opacity: .3; transition: all .4s; }
+  .dots span.on { filter: none; opacity: 1; animation: pop .5s cubic-bezier(.3, 1.6, .5, 1); }
+  @keyframes pop { from { transform: scale(.2); } to { transform: scale(1); } }
+
+  details { margin-top: 20px; text-align: left; border-top: 1px solid var(--border); padding-top: 14px; }
+  summary { cursor: pointer; font-size: 14px; color: var(--muted); }
+  .settings { display: grid; grid-template-columns: 1fr auto; gap: 10px 12px; align-items: center; margin-top: 14px; font-size: 14px; }
+  .settings input[type=number] {
+    width: 72px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px;
+    font: inherit; text-align: right; background: var(--card); color: var(--text);
+  }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 14px; text-align: center; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .egg *, .egg + .shadow, .burst { animation: none !important; }
+  }
+</style>
+</head>
+<body>
+<main class="app">
+  <h1>🥚 포모도로 타이머</h1>
+
+  <div class="tabs" role="tablist">
+    <button data-mode="work" class="active">집중</button>
+    <button data-mode="short">짧은 휴식</button>
+    <button data-mode="long">긴 휴식</button>
+  </div>
+
+  <button class="egg is-idle" id="egg" aria-label="타이머 시작/일시정지">
+    <div class="egg-hop"><div class="egg-body">
+      <svg viewBox="0 0 400 400" aria-hidden="true">
+        <defs>
+          <clipPath id="egg-clip">
+            <path d="M200 30 C292 30 352 150 354 240 C356 330 292 378 200 378 C108 378 44 330 46 240 C48 150 108 30 200 30 Z"/>
+          </clipPath>
+        </defs>
+
+        <path class="egg-shape" d="M200 30 C292 30 352 150 354 240 C356 330 292 378 200 378 C108 378 44 330 46 240 C48 150 108 30 200 30 Z"/>
+
+        <g clip-path="url(#egg-clip)">
+          <g id="ticks"></g>
+          <rect class="belt-bg" x="40" y="246" width="320" height="18"/>
+          <rect class="belt" id="belt" x="40" y="246" width="320" height="18"/>
+        </g>
+
+        <polygon class="pointer" points="188,48 212,48 200,68"/>
+
+        <!-- 볼 -->
+        <ellipse class="cheek" cx="128" cy="210" rx="21" ry="12"/>
+        <ellipse class="cheek" cx="272" cy="210" rx="21" ry="12"/>
+
+        <!-- 눈 -->
+        <g class="eye"><g class="blink"><g class="pupil">
+          <circle class="ink" cx="152" cy="180" r="16"/>
+          <circle cx="157" cy="174" r="5.5" fill="#fff"/>
+        </g></g></g>
+        <g class="eye"><g class="blink r"><g class="pupil">
+          <circle class="ink" cx="248" cy="180" r="16"/>
+          <circle cx="253" cy="174" r="5.5" fill="#fff"/>
+        </g></g></g>
+        <path class="happy ink-line" d="M138 184 Q152 166 166 184"/>
+        <path class="happy ink-line" d="M234 184 Q248 166 262 184"/>
+
+        <!-- 입 -->
+        <path class="mouth-smile ink-line" d="M186 206 Q200 220 214 206"/>
+        <path class="mouth-open ink" d="M182 204 Q200 204 218 204 Q216 228 200 228 Q184 228 182 204 Z"/>
+        <ellipse class="mouth-sleep ink" cx="200" cy="212" rx="5" ry="4"/>
+
+        <!-- 땀방울 (마지막 10초) -->
+        <path class="sweat" d="M300 140 Q292 154 300 160 Q308 154 300 140 Z" fill="#8ec9f0"/>
+
+        <!-- Zz (일시정지) -->
+        <g class="zz">
+          <text class="z1" x="282" y="130">Z</text>
+          <text class="z2" x="300" y="112">z</text>
+          <text class="z3" x="314" y="98">z</text>
+        </g>
+
+        <text class="digits" id="digits" x="200" y="330" text-anchor="middle">25:00</text>
+      </svg>
+    </div></div>
+  </button>
+  <div class="shadow"></div>
+
+  <div class="status" id="label">집중할 시간이에요</div>
+
+  <div class="controls">
+    <button class="btn" id="reset" title="초기화 (R)">↺ 초기화</button>
+    <button class="btn primary" id="toggle" title="시작/일시정지 (Space)">시작</button>
+    <button class="btn" id="skip" title="다음 단계로 (S)">건너뛰기 ⏭</button>
+  </div>
+
+  <div class="stats">
+    오늘 완료한 포모도로: <strong id="count">0</strong>개
+    <div class="dots" id="dots"></div>
+  </div>
+
+  <details>
+    <summary>설정</summary>
+    <div class="settings">
+      <label for="s-work">집중 시간 (분)</label><input id="s-work" type="number" min="1" max="120">
+      <label for="s-short">짧은 휴식 (분)</label><input id="s-short" type="number" min="1" max="60">
+      <label for="s-long">긴 휴식 (분)</label><input id="s-long" type="number" min="1" max="60">
+      <label for="s-every">긴 휴식 간격 (포모도로 수)</label><input id="s-every" type="number" min="2" max="10">
+      <label for="s-auto">다음 단계 자동 시작</label><input id="s-auto" type="checkbox">
+      <label for="s-sound">종료 알림음</label><input id="s-sound" type="checkbox">
+    </div>
+  </details>
+
+  <div class="hint">달걀을 눌러도 시작/정지돼요 · Space 시작/정지 · R 초기화 · S 건너뛰기</div>
+</main>
+
+<script>
+(() => {
+  const LABELS = {
+    work:  { idle: '집중할 시간이에요', run: '집중하는 중… 째깍째깍', pause: '쿨쿨… 잠깐 멈췄어요' },
+    short: { idle: '잠깐 쉬어가요', run: '스트레칭 한번 해요 🙆', pause: '쿨쿨… 잠깐 멈췄어요' },
+    long:  { idle: '푹 쉬어요', run: '물 한잔 마시고 오세요 🥤', pause: '쿨쿨… 잠깐 멈췄어요' }
+  };
+  const NAMES = { work: '집중', short: '짧은 휴식', long: '긴 휴식' };
+  const defaults = { work: 25, short: 5, long: 15, every: 4, auto: false, sound: true };
+
+  const store = {
+    get(k, fb) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fb; } catch { return fb; } },
+    set(k, v)  { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+  };
+
+  const settings = Object.assign({}, defaults, store.get('pomo-settings', {}));
+  const today = new Date().toDateString();
+  const saved = store.get('pomo-count', {});
+  let count = saved.date === today ? saved.n : 0;
+
+  let mode = 'work';
+  let total = settings.work * 60;
+  let remaining = total;
+  let endAt = null;
+  let tick = null;
+  let cycle = 0;
+  let ringing = false, ringTimer = null;
+
+  const $ = id => document.getElementById(id);
+  const egg = $('egg');
+
+  // 눈금 만들기
+  const NS = 'http://www.w3.org/2000/svg';
+  const ticks = $('ticks');
+  for (let i = 0; i < 24; i++) {
+    const major = i % 2 === 0;
+    const a = (i * 15) * Math.PI / 180;
+    const r1 = major ? 124 : 132, r2 = 142;
+    const l = document.createElementNS(NS, 'line');
+    l.setAttribute('x1', 200 + r1 * Math.sin(a)); l.setAttribute('y1', 235 - r1 * Math.cos(a));
+    l.setAttribute('x2', 200 + r2 * Math.sin(a)); l.setAttribute('y2', 235 - r2 * Math.cos(a));
+    l.setAttribute('class', major ? 'tick' : 'tick minor');
+    ticks.appendChild(l);
+  }
+
+  function fmt(s) {
+    s = Math.max(0, Math.ceil(s));
+    return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+  }
+
+  function render() {
+    const running = !!endAt;
+    const paused = !running && remaining < total;
+    const frac = total ? remaining / total : 0;
+
+    $('digits').textContent = fmt(remaining);
+    $('belt').setAttribute('width', 320 * frac);
+    ticks.style.transform = `rotate(${-(1 - frac) * 360}deg)`;
+
+    egg.classList.toggle('is-running', running && !ringing);
+    egg.classList.toggle('is-paused', paused && !ringing);
+    egg.classList.toggle('is-idle', !running && !paused && !ringing);
+    egg.classList.toggle('is-hurry', running && remaining <= 10);
+    egg.classList.toggle('is-ringing', ringing);
+
+    $('label').textContent = ringing
+      ? (mode === 'work' ? '휴식 끝! 다시 집중해볼까요? 💪' : '잘했어요! 이제 ' + NAMES[mode] + ' 시간 🎉')
+      : LABELS[mode][running ? 'run' : paused ? 'pause' : 'idle'];
+    $('toggle').textContent = running ? '일시정지' : (paused ? '계속' : '시작');
+    document.title = (running ? fmt(remaining) + ' · ' : '') + NAMES[mode] + ' | 포모도로';
+    document.body.className = mode === 'work' ? '' : mode;
+    document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+    $('count').textContent = count;
+
+    const dots = $('dots');
+    if (dots.children.length !== settings.every) {
+      dots.innerHTML = '';
+      for (let i = 0; i < settings.every; i++) { const d = document.createElement('span'); d.textContent = '🥚'; dots.appendChild(d); }
+    }
+    [...dots.children].forEach((d, i) => d.classList.toggle('on', i < cycle));
+  }
+
+  function hop() {
+    egg.classList.remove('hop'); void egg.offsetWidth; egg.classList.add('hop');
+  }
+  egg.querySelector('.egg-hop').addEventListener('animationend', () => egg.classList.remove('hop'));
+
+  function setMode(m, jump = true) {
+    stop();
+    if (mode !== m && jump) hop();
+    mode = m;
+    total = settings[m] * 60;
+    remaining = total;
+    render();
+  }
+
+  function start() {
+    if (endAt) return;
+    stopRinging();
+    endAt = Date.now() + remaining * 1000;
+    tick = setInterval(update, 250);
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {});
+    }
+    render();
+  }
+
+  function stop() {
+    if (endAt) remaining = Math.max(0, (endAt - Date.now()) / 1000);
+    endAt = null;
+    clearInterval(tick);
+    render();
+  }
+
+  function update() {
+    remaining = (endAt - Date.now()) / 1000;
+    if (remaining <= 0) { remaining = 0; finish(true); return; }
+    render();
+  }
+
+  function finish(natural) {
+    stopRinging();
+    endAt = null;
+    clearInterval(tick);
+    let next;
+    if (mode === 'work') {
+      if (natural) { count++; store.set('pomo-count', { date: today, n: count }); }
+      cycle++;
+      if (cycle >= settings.every) { next = 'long'; cycle = 0; } else next = 'short';
+    } else {
+      next = 'work';
+    }
+    if (natural) alertDone(next);
+    setMode(next, !natural);
+    if (natural) startRinging();
+    if (settings.auto && natural) setTimeout(start, 2600);
+  }
+
+  function startRinging() {
+    ringing = true;
+    burst();
+    render();
+    ringTimer = setTimeout(() => { ringing = false; render(); }, 2600);
+  }
+  function stopRinging() {
+    clearTimeout(ringTimer);
+    ringing = false;
+  }
+
+  function burst() {
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const items = ['✨', '⭐', '🎉', '💛', '✨', '🌟'];
+    for (let i = 0; i < 14; i++) {
+      const s = document.createElement('span');
+      s.className = 'burst';
+      s.textContent = items[i % items.length];
+      const a = (i / 14) * Math.PI * 2 + Math.random() * .3;
+      const d = 120 + Math.random() * 50;
+      s.style.setProperty('--dx', Math.cos(a) * d + 'px');
+      s.style.setProperty('--dy', Math.sin(a) * d + 'px');
+      s.style.setProperty('--rot', (Math.random() * 360 - 180) + 'deg');
+      s.style.animationDelay = (Math.random() * .15) + 's';
+      egg.appendChild(s);
+      s.addEventListener('animationend', () => s.remove());
+    }
+  }
+
+  function alertDone(next) {
+    if (settings.sound) beep();
+    const msg = mode === 'work' ? '집중 시간이 끝났어요! ' + NAMES[next] + ' 시간입니다.' : '휴식 끝! 다시 집중해볼까요?';
+    if ('Notification' in window && Notification.permission === 'granted') {
+      try { new Notification('🥚 포모도로', { body: msg }); } catch {}
+    }
+  }
+
+  // 귀여운 "띠링띠링" 알림음
+  let audioCtx;
+  function beep() {
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      const notes = [1046, 1318, 1568, 1046, 1318, 1568];
+      notes.forEach((f, i) => {
+        const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+        o.type = 'triangle'; o.frequency.value = f;
+        const s = audioCtx.currentTime + i * 0.13 + (i >= 3 ? 0.25 : 0);
+        g.gain.setValueAtTime(0.0001, s);
+        g.gain.exponentialRampToValueAtTime(0.25, s + 0.015);
+        g.gain.exponentialRampToValueAtTime(0.0001, s + 0.22);
+        o.connect(g).connect(audioCtx.destination);
+        o.start(s); o.stop(s + 0.25);
+      });
+    } catch {}
+  }
+
+  // 눈동자가 마우스를 따라봐요
+  const pupils = egg.querySelectorAll('.pupil');
+  document.addEventListener('pointermove', e => {
+    const r = egg.getBoundingClientRect();
+    const dx = e.clientX - (r.left + r.width / 2);
+    const dy = e.clientY - (r.top + r.height * .45);
+    const len = Math.hypot(dx, dy) || 1;
+    const k = Math.min(1, len / 300) * 5;
+    pupils.forEach(p => p.style.transform = `translate(${dx / len * k}px, ${dy / len * k}px)`);
+  });
+
+  // 이벤트
+  function toggle() {
+    if (!audioCtx) { try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch {} }
+    endAt ? stop() : start();
+  }
+  $('toggle').onclick = toggle;
+  egg.onclick = toggle;
+  $('reset').onclick = () => { stopRinging(); setMode(mode); hop(); };
+  $('skip').onclick = () => finish(false);
+  document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => { stopRinging(); setMode(b.dataset.mode); });
+
+  document.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT') return;
+    if (e.code === 'Space') { e.preventDefault(); toggle(); }
+    else if (e.key === 'r' || e.key === 'R') $('reset').click();
+    else if (e.key === 's' || e.key === 'S') $('skip').click();
+  });
+
+  // 설정
+  const fields = { work: 's-work', short: 's-short', long: 's-long', every: 's-every' };
+  Object.entries(fields).forEach(([k, id]) => {
+    const el = $(id);
+    el.value = settings[k];
+    el.onchange = () => {
+      const v = Math.round(Number(el.value));
+      if (!v || v < Number(el.min)) { el.value = settings[k]; return; }
+      settings[k] = Math.min(v, Number(el.max));
+      el.value = settings[k];
+      store.set('pomo-settings', settings);
+      if (k === mode && !endAt) setMode(mode); else render();
+    };
+  });
+  ['auto', 'sound'].forEach(k => {
+    const el = $('s-' + k);
+    el.checked = settings[k];
+    el.onchange = () => { settings[k] = el.checked; store.set('pomo-settings', settings); };
+  });
+
+  setMode('work', false);
+})();
+</script>
+</body>
+</html>
